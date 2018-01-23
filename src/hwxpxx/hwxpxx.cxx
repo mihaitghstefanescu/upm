@@ -71,8 +71,8 @@ void HWXPXX::opcua_addNode(std::string displayName, std::string description, std
   node_attr.description = UA_LOCALIZEDTEXT((char*)"en_US", (char*)description.c_str());
 
   /* NOTE: This is important - sensor data type. */
-  UA_Float humidity = 0.0f;
-  UA_Variant_setScalar(&node_attr.value, &humidity, &UA_TYPES[UA_TYPES_FLOAT]);
+  UA_Float sensorData = 0.0f;
+  UA_Variant_setScalar(&node_attr.value, &sensorData, &UA_TYPES[UA_TYPES_FLOAT]);
   node_attr.dataType = UA_TYPES[UA_TYPES_FLOAT].typeId;
 
   /* Register the node to the server. */
