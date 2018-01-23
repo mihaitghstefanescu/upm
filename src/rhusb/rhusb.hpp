@@ -26,6 +26,8 @@
 #include <string>
 #include <mraa/uart.hpp>
 
+#include "open62541.h"
+
 namespace upm {
 
   /**
@@ -100,13 +102,15 @@ namespace upm {
      */
     std::string getFirmwareID();
 
-
   protected:
     // serial i/o support
     bool dataAvailable(unsigned int millis);
     int writeStr(std::string data);
     std::string readStr(int len);
     std::string sendCommand(std::string cmd);
+    /* OPC-UA methods: */
+    void opcua_startServer(std::string serverAddress);
+    void opcua_addNode(std::string displayName, std::string description, std::string qualifiedName, UA_NodeId *nodeId);
 
     mraa::Uart m_uart;
 
@@ -114,5 +118,9 @@ namespace upm {
     // data
     float m_temperature;
     float m_humidity;
+    /* OPC-UA objects: */
+    UA_Client *opcua_client;
+    UA_NodeId opcua_humidityNodeId;
+    UA_NodeId opcua_temperatureNodeId;
   };
 }

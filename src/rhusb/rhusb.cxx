@@ -37,6 +37,9 @@ static const int maxBuffer = 1024;
 // baud rate is always 9600
 static const int baudRate = 9600;
 
+/* opc-ua method exit code. */
+static UA_StatusCode opcua_status;
+
 // conversion from celsius to fahrenheit
 
 static float c2f(float c)
@@ -44,17 +47,75 @@ static float c2f(float c)
   return (c * (9.0 / 5.0) + 32.0);
 }
 
+void RHUSB::opcua_startServer(std::string serverAddress)
+{
+  if (opcua_client == NULL)
+  {
+    opcua_client = UA_Client_new(UA_ClientConfig_standard);
+    opcua_status = UA_Client_connect(opcua_client, serverAddress.c_str());
+    if (opcua_status != UA_STATUSCODE_GOOD)
+    {
+      UA_Client_delete(opcua_client);
+      throw std::runtime_error(std::string(__FUNCTION__) +
+                               ": cannot connect to OPC-UA server");
+    }
+  }
+}
+
+void RHUSB::opcua_addNode(std::string displayName, std::string description, std::string qualifiedName, UA_NodeId *nodeId)
+{
+  /* Create the OPC UA Node associated with this device. */
+  UA_VariableAttributes node_attr;
+  UA_VariableAttributes_init(&node_attr);
+  node_attr.displayName = UA_LOCALIZEDTEXT((char*)"en_US", (char*)displayName.c_str());
+  node_attr.description = UA_LOCALIZEDTEXT((char*)"en_US", (char*)description.c_str());
+
+  /* NOTE: This is important - sensor data type. */
+  UA_Float sensorData = 0.0f;
+  UA_Variant_setScalar(&node_attr.value, &sensorData, &UA_TYPES[UA_TYPES_FLOAT]);
+  node_attr.dataType = UA_TYPES[UA_TYPES_FLOAT].typeId;
+
+  /* Register the node to the server. */
+  opcua_status = UA_Client_addVariableNode(opcua_client,
+                                        UA_NODEID_NUMERIC(1, 0), // Random new node ID
+                                        UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER),
+                                        UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES),
+                                        UA_QUALIFIEDNAME(0, (char*)qualifiedName.c_str()),
+                                        UA_NODEID_NULL, // no variable type
+                                        node_attr,
+                                        nodeId);
+
+  if (opcua_status != UA_STATUSCODE_GOOD)
+  {
+    throw std::runtime_error(std::string(__FUNCTION__) +
+                             ": cannot add variable node " + displayName);
+  }
+}
+
 RHUSB::RHUSB(std::string device) :
-  m_uart(device)
+  m_uart(device), opcua_client(NULL)
 {
   m_uart.setBaudRate(baudRate);
 
   m_temperature = 0.0;
   m_humidity = 0.0;
+
+  /* Create open62541 client. */
+  opcua_startServer("opc.tcp://localhost:4840");
+  /* Add nodes for humidity and temperature readings. */
+  opcua_addNode("RHUSB: Humidity", "Humidity sensor", "RHUSB Humidity Node", &opcua_humidityNodeId);
+  opcua_addNode("RHUSB: Temperature", "Temperature sensor", "RHUSB Temperature Node", &opcua_temperatureNodeId);
 }
 
 RHUSB::~RHUSB()
 {
+  if (opcua_client)
+  {
+    UA_Client_deleteNode(opcua_client, opcua_humidityNodeId, UA_TRUE);
+    UA_Client_deleteNode(opcua_client, opcua_temperatureNodeId, UA_TRUE);
+    UA_Client_disconnect(opcua_client);
+    UA_Client_delete(opcua_client);
+  }
 }
 
 void RHUSB::update()
@@ -93,14 +154,30 @@ void RHUSB::update()
 
 float RHUSB::getTemperature(bool fahrenheit)
 {
-  if (fahrenheit)
-    return c2f(m_temperature);
-  else
-    return m_temperature;
+  UA_Variant new_value;
+  UA_Variant_init(&new_value);
+  float temperature = (fahrenheit) ? c2f(m_temperature) : m_temperature;
+
+  if (opcua_client != NULL)
+  {
+    UA_Variant_setScalar(&new_value, &temperature, &UA_TYPES[UA_TYPES_FLOAT]);
+    UA_Client_writeValueAttribute(opcua_client, opcua_temperatureNodeId, &new_value);
+  }
+
+  return temperature;
 }
 
 float RHUSB::getHumidity()
 {
+  UA_Variant new_value;
+  UA_Variant_init(&new_value);
+
+  if (opcua_client != NULL)
+  {
+    UA_Variant_setScalar(&new_value, &m_humidity, &UA_TYPES[UA_TYPES_FLOAT]);
+    UA_Client_writeValueAttribute(opcua_client, opcua_humidityNodeId, &new_value);
+  }
+
   return m_humidity;
 }
 
