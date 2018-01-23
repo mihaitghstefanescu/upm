@@ -26,6 +26,7 @@
 #include <string>
 
 #include <modbus/modbus.h>
+#include "open62541.h"
 
 namespace upm {
 
@@ -270,6 +271,9 @@ namespace upm {
 
     // is the device reporting in C or F?
     bool m_isCelsius;
+    /* OPC-UA methods: */
+    void opcua_startServer(std::string serverAddress);
+    void opcua_addNode(std::string displayName, std::string description, std::string qualifiedName, UA_NodeId *nodeId);
 
   private:
     bool m_debugging;
@@ -279,5 +283,9 @@ namespace upm {
     float m_humidity; // relative
     int m_slider; // optional slider value
     bool m_override; // status of override switch
+    /* OPC-UA objects: */
+    UA_Client *opcua_client;
+    UA_NodeId opcua_humidityNodeId;
+    UA_NodeId opcua_temperatureNodeId;
   };
 }
